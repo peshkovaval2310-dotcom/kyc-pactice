@@ -9,6 +9,7 @@ import com.interview.sms.SmsRequest;
 import com.interview.sms.ValidationError;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 public class ApplicationServiceJava {
 
@@ -86,10 +87,27 @@ public class ApplicationServiceJava {
                     "Application update returned no result"
             );
         }
+        sendKycCompletedSmsAsync(updatedApplication)
+                .exceptionally(error -> {
+                    System.err.println(
+                    "Failed to send KYC SMS for application "
+                            + updatedApplication.id()
+                            + ": " + error.getMessage()
+            );
 
+        return null;
+                });
 
+        return updatedApplication;
+    }
+
+    private CompletableFuture<Void> sendKycCompletedSmsAsync(Application application){
+        return CompletableFuture.runAsync(() ->sendKycCompletedSms(application));
+    }
+
+    private void sendKycCompletedSms(Application application){
         SmsRequest smsRequest = new SmsRequest(
-                updatedApplication.clientId().toString(),
+                application.clientId().toString(),
                 "Проверка личности успешно завершена."
         );
 
@@ -104,13 +122,10 @@ public class ApplicationServiceJava {
             );
         }
 
-        if (notificationResult instanceof ValidationError error) {
+        if (notificationResult instanceof ValidationError(String reason)) {
             throw new IllegalStateException(
-                    "SMS sending failed: " + error.reason()
+                    "SMS sending failed: " + reason
             );
         }
-
-        return updatedApplication;
-
     }
 }

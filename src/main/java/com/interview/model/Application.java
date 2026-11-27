@@ -1,4 +1,6 @@
-package com.interview.service;
+package com.interview.model;
+
+import com.interview.service.ApplicationStatus;
 
 import java.util.UUID;
 

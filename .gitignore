@@ -39,3 +39,7 @@ build/
 
 .gitignore
 .idea
+
+
+~$*
+*.docx

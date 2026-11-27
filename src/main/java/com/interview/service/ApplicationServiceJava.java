@@ -2,26 +2,27 @@ package com.interview.service;
 
 import com.interview.kyc.KycClient;
 import com.interview.kyc.KycResult;
+import com.interview.model.Application;
+import com.interview.service.ApplicationStatus;
+import com.interview.model.NotificationTask;
 import com.interview.repository.ApplicationRepository;
-import com.interview.sms.NotificationClient;
-import com.interview.sms.NotificationResult;
-import com.interview.sms.SmsRequest;
-import com.interview.sms.ValidationError;
+import com.interview.repository.KycCompletionRepository;
+
 
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
+
 
 public class ApplicationServiceJava {
 
     private final ApplicationRepository applicationRepository;
     private final KycClient kycClient;
-    private final NotificationClient notificationClient;
+    private final KycCompletionRepository kycCompletionRepository;
 
 
-    public ApplicationServiceJava(ApplicationRepository applicationRepository, KycClient kycClient, NotificationClient notificationClient) {
+    public ApplicationServiceJava(ApplicationRepository applicationRepository, KycClient kycClient, KycCompletionRepository kycCompletionRepository) {
         this.applicationRepository = applicationRepository;
         this.kycClient = kycClient;
-        this.notificationClient = notificationClient;
+        this.kycCompletionRepository = kycCompletionRepository;
     }
 
     public Application completeKyc(UUID applicationId, UUID clientId ) {
@@ -49,6 +50,8 @@ public class ApplicationServiceJava {
 
             );
         }
+
+
         if (application.status() != ApplicationStatus.KYC_PENDING) {
             throw new IllegalStateException(
                     "Application must have KYC_PENDING status, actual: "
@@ -61,16 +64,25 @@ public class ApplicationServiceJava {
                     "Application has no KYC session ID"
             );
         }
-        KycResult kycResult = kycClient.fetchStatus(kycSessionId);
+        KycResult kycResult;
+        try {
+            kycResult = kycClient.fetchStatus(kycSessionId);
+        } catch (RuntimeException exception) {
+            throw new IllegalStateException(
+                    "KYC service call failed for application: "
+                            + applicationId,
+                    exception
+            );
+        }
+
         if (kycResult == null) {
             throw new IllegalStateException(
                     "KYC service returned no result"
             );
         }
-
         if (!kycResult.completed()) {
             throw new IllegalStateException(
-                    "KYC is not completed"
+                    "KYC is not completed for application: " + applicationId
             );
         }
 
@@ -80,52 +92,16 @@ public class ApplicationServiceJava {
                 ApplicationStatus.KYC_COMPLETED,
                 application.kycSessionId()
         );
-        Application updatedApplication =
-                applicationRepository.update(completedApplication);
-        if (updatedApplication == null) {
-            throw new IllegalStateException(
-                    "Application update returned no result"
-            );
-        }
-        sendKycCompletedSmsAsync(updatedApplication)
-                .exceptionally(error -> {
-                    System.err.println(
-                    "Failed to send KYC SMS for application "
-                            + updatedApplication.id()
-                            + ": " + error.getMessage()
-            );
+        NotificationTask notificationTask =
+                NotificationTask.pendingKycCompleteSms(completedApplication);
 
-        return null;
-                });
-
-        return updatedApplication;
-    }
-
-    private CompletableFuture<Void> sendKycCompletedSmsAsync(Application application){
-        return CompletableFuture.runAsync(() ->sendKycCompletedSms(application));
-    }
-
-    private void sendKycCompletedSms(Application application){
-        SmsRequest smsRequest = new SmsRequest(
-                application.clientId().toString(),
-                "Проверка личности успешно завершена."
+        return kycCompletionRepository.completeWithNotification(
+                completedApplication,
+                notificationTask
         );
 
-
-
-        NotificationResult notificationResult =
-                notificationClient.sendSms(smsRequest);
-
-        if (notificationResult == null) {
-            throw new IllegalStateException(
-                    "Notification service returned no result"
-            );
-        }
-
-        if (notificationResult instanceof ValidationError(String reason)) {
-            throw new IllegalStateException(
-                    "SMS sending failed: " + reason
-            );
-        }
     }
-}
+
+
+    }
+

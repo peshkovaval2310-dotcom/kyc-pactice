@@ -2,5 +2,5 @@ package com.interview.kyc;
 
 public interface KycClient {
 
-    KycResult fetchStatus(String kysSessionId);
+    KycResult fetchStatus(String kycSessionId);
 }

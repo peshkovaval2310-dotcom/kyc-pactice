@@ -1,6 +1,6 @@
 package com.interview.repository;
 
-import com.interview.service.Application;
+import com.interview.model.Application;
 
 import java.util.UUID;
 
